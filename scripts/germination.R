@@ -5,7 +5,7 @@
 library(tidyverse)
 
 # read in data
-counts <- read_csv("./data_raw/germination_counts.csv")
+counts <- read_csv("./data_raw/germination/TPC_germination.csv")
 
 # separate slides into site, temp and replicate columns
 counts <- counts %>% 
@@ -28,8 +28,6 @@ germination <- counts %>%
   mutate(percent_ungerm = (ungerminated / total)*100) %>% 
   na.omit() %>% 
   mutate(temp = as.integer(temp))
-
-
 
 # Playing around with subsetting data -------------------------------------
 

@@ -8,7 +8,6 @@ rm(list = ls())
 
 # Read in data ------------------------------------------------------------
 
-
 # create list of all file paths for csv files in the ibutton folder
 cell_files <- c(list.files("./data_raw/ibuttons", full.names = TRUE))
 
@@ -16,13 +15,6 @@ cell_files <- c(list.files("./data_raw/ibuttons", full.names = TRUE))
 names(cell_files) <- cell_files %>% 
   gsub(pattern = "csv$", replacement = "")
 
-# use read_csv to read in all files contained in cell_files as dataframes
-
-# # not reading in the third column though.... I don't know why
-# all_cells <- map_df(cell_files, read_csv, col_names = TRUE,
-#                     .id = "file_name")
-
-# When I tell it to skip the first 14 rows then it will read the three columns in
 all_cells <- map_df(cell_files, read_csv, col_names = TRUE, skip = 14,
                     .id = "file_name")
 
@@ -52,22 +44,25 @@ str(all_cells$date_time)
 #separate date/time column  
 all_cells <- all_cells %>%   
   separate(date_time, into = c("date", "time"),
-           sep = 11, remove = FALSE)
+           sep = " ", remove = FALSE)
+
+str(all_cells)
 
 all_cells$date <- as.POSIXct(all_cells$date, format = "%Y-%m-%d")
 str(all_cells$date)
 
+## why is date still in the time column?
 all_cells$time <- as.POSIXct(all_cells$time, format = "%H:%M:%S", tz = "UTC")
 str(all_cells$time)
-strptime(all_cells$time, format = "%H:$M:%S", tz = "UTC")
+
 
 #separate 'code' into columns for exposed/protected, low/high zone, replicate
-all_cells <- all_cells %>% 
-  separate(code, into =c("location", "tide_height", "replicate"),
-           sep = c(1,2), remove = FALSE, extra = "drop")
+# all_cells <- all_cells %>% 
+#   separate(code, into =c("location", "tide_height", "replicate"),
+#            sep = c(1,2), remove = FALSE, extra = "drop")
 
 
-# Bamfield - exposed ------------------------------------------------------
+# Bamfield 2017 - exposed ------------------------------------------------------
 
 
 #filter out bamfield only
@@ -110,39 +105,63 @@ ggplot(bamfield_exp_august, aes(x = date, y = Value, colour = tide_height)) + ge
 
 
 
+ # Not using this site anymore
+# Bamfield 2017 - protected ----------------------------------------------------
+#filter out bamfield only
+bamfield <- all_cells %>% 
+  filter(site == "Bamfield")
 
-# Bamfield - protected ----------------------------------------------------
+bamfield <- bamfield %>% 
+separate(code, into =c("location", "tide_height", "replicate"),
+         sep = c(1,2), remove = FALSE, extra = "drop")
 
 bamfield_prot <- bamfield %>% 
   filter(location == "S") %>% 
-  mutate(date = dmy(date), time = hms(time)) %>% 
-  filter(date >= "2017-05-05") # ibuttons were put out on May 4th but I can't figure out how to exclude before a specific time on that date
+  mutate(date = ymd(date)) %>% 
+  filter(date >= "2017-05-05") 
+# ibuttons were put out on May 4th but I can't figure out how to exclude before a specific time on that date
+# filtering from May 24th for some reason???
 
-bamfield_prot_may <- bamfield_prot %>% 
-  filter(date < "2017-06-01")
+bamfield_p_june <- bamfield_prot %>% 
+  filter(date > "2017-06-01" & date < "2017-07-01")
 
-ggplot(bamfield_prot_may, aes(x = date, Value) + geom_point() + geom_smooth(se = FALSE)
+# How to calculate variability? Here I'm calculating the daily range of temp
+bamfield_p_june %>% 
+  group_by(date) %>% 
+  summarise(min_daily_temp = min(temperature), max_daily_temp = max(temperature)) %>% 
+  mutate(range_daily_temp = max_daily_temp - min_daily_temp) %>% 
+  ggplot(., aes(x = date, y = range_daily_temp)) + geom_point()
 
-bamfield_prot_aug <- bamfield_prot %>% 
-  filter(date >= "2017-08-01")
+bamfield_range <- bamfield_prot %>% 
+  group_by(code, ibutton_no, date) %>% 
+  summarise(min_daily_temp = min(temperature), max_daily_temp = max(temperature)) %>% 
+  mutate(range_daily_temp = max_daily_temp - min_daily_temp) 
 
-ggplot(bamfield_prot_aug, aes(x = date, Value)) + geom_point() + geom_smooth(se = FALSE)
-       
-# Quadra --------------------------------------------------------
+bamfield_range_plot <-   ggplot(bamfield_range, aes(x = date, y = range_daily_temp)) + 
+  geom_point(aes(colour = code))
+bamfield_range_plot       
+
+# Quadra 2017 --------------------------------------------------------
 
 #filter out quadra only
-quadra_temp <- all_cells %>% 
+quadra <- all_cells %>% 
   filter(site == "Quadra") %>%
   filter(date_time >= "2017-05-04") # done being put out on May 3rd at 3:30pm
 
-quadra_june <- quadra_temp %>% 
-  filter(date_time >= "2017-06-08" & date_time <= "2017-06-15") %>% 
-  group_by(date_time) %>% 
-  summarise(avg_temp = mean(temperature)) 
+quadra_summary <- quadra %>% 
+  group_by(date) %>% 
+  summarise(avg_temp = mean(temperature),
+            min_temp = min(temperature), 
+            max_temp = max(temperature))
 
-par(mfrow = c(2,2))
-ggplot(data = quadra_june, aes(x = date_time, y = avg_temp )) + geom_point()
+# calculating daily range of temp
+quadra_range <- quadra %>% 
+  group_by(code, ibutton_no, date) %>% 
+  summarise(min_daily_temp = min(temperature), max_daily_temp = max(temperature)) %>% 
+  mutate(range_daily_temp = max_daily_temp - min_daily_temp) 
 
+quadra_range_plot <- ggplot(data = quadra_range, aes(x = date, y = range_daily_temp)) + 
+  geom_point(aes(colour = code))
 
 #messing around with plotting time series of temp
 
@@ -189,6 +208,77 @@ bamfield_prot %>%
 
 
 
+ # Not using this site anymore
+# Ruckle 2018 -------------------------------------------------------------
+
+ruckle <- all_cells %>% 
+  filter(site == "ruckle")
+
+ruckle_ibuttons <- write_csv(ruckle, "./data/ruckle_temp.csv")
+
+ruckle %>% 
+  group_by(code, ibutton_no, date) %>% 
+  summarise(min_daily_temp = min(temperature), max_daily_temp = max(temperature)) %>% 
+  mutate(range_daily_temp = max_daily_temp - min_daily_temp) %>% View
+  ggplot(., aes(x = date, y = range_daily_temp)) + 
+    geom_point(aes(colour = code)) + 
+    ylim(0, 30) + 
+  labs(title = "ruckle park",
+                    x = "date",
+                    y = "range in daily temperature",
+                    color = "ibutton location")
+
+#Why are some ranges so low?
+ruckle %>% 
+  filter(code == "1") %>% 
+  filter(ibutton_no == "r1.") %>% 
+  filter(date == "2018-08-05") %>% View
+# Because it's the dates that are at 
+# the end of the ibutton and have less than 24 measurements?
+
+ruckle %>% 
+  filter(code == "1") %>% 
+  filter(ibutton_no == "r1.") %>% 
+  filter(date == "2018-08-02") %>% View
+
+ruckle %>% 
+  mutate(id = row_number()) %>% 
+  group_by(code, ibutton_no) %>% 
+  count(date) %>% 
+  filter(n >= 48) %>% View
+
+ruckle %>% 
+  group_by(code, ibutton_no, date) %>% 
+  summarise(min_daily_temp = min(temperature), max_daily_temp = max(temperature)) %>% 
+  mutate(range_daily_temp = max_daily_temp - min_daily_temp) %>% 
+  ggplot(., aes(x = date, y = range_daily_temp)) + 
+  geom_point(aes(colour = code)) + 
+  ylim(0, 30) + 
+  labs(title = "ruckle park",
+       x = "date",
+       y = "range in daily temperature",
+       color = "ibutton location")
+
+ruckle %>% 
+  mutate(id = row_number()) %>% 
+  group_by(code, ibutton_no) %>% 
+  count(date) %>% View
+  filter(count(date) >= 48) %>% View
+  keep(n >= 48) %>% View
+
+# Nanaimo 2017 -----------------------------------------------------------------
+
+nanaimo <- all_cells %>% 
+  filter(site == "NP")
+
+nanaimo_range <- nanaimo %>% 
+  group_by(code, ibutton_no, date) %>% 
+  summarise(min_daily_temp = min(temperature), max_daily_temp = max(temperature)) %>% 
+  mutate(range_daily_temp = max_daily_temp - min_daily_temp)
+
+nanaimo_range_plot <- ggplot(data = nanaimo_range, aes(x = date, y = range_daily_temp)) + 
+  geom_point(aes(colour = code))
+
 # Tides -------------------------------------------------------------------
 
 quadra_tides <- read_csv("./data_raw/tides/HeriotBay_May2017.csv")
@@ -227,8 +317,5 @@ a <- left_join(quadra_temp, quadra_tides)
 ggplot(quadra_week, aes(x = date_time, y = Height)) + geom_point() + geom_smooth(se = FALSE)
 
 ## join two data frames, tide and temp data from last week of May
-
-
-# messing around today - don’t include the time ---------------------------
 
 
